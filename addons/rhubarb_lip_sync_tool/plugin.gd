@@ -1,8 +1,6 @@
 @tool
 extends EditorPlugin
-class_name RhubarbTool
 
-#const RhubarbUtilities := preload("res://addons/rhubarb_lip_sync_tool/RhubarbUtilities.gd")
 const RhubarbExport := preload("res://addons/rhubarb_lip_sync_tool/RhubarbExport.gd")
 
 const FAILURE_CODE := -1
