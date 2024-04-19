@@ -41,7 +41,7 @@ func _exit_tree() -> void:
 	
 	export_plugin = null
 
-func _enable_plugin() -> void:	
+func _enable_plugin() -> void:
 	print("rhubal plugin enabled")
 
 func _disable_plugin() -> void:

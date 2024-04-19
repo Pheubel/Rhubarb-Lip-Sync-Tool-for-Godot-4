@@ -21,5 +21,8 @@ func get_result():
 	
 	return _result
 
+func has_completed() -> bool:
+	return _is_completed
+
 func _complete_task():
 	_task_completed_internal.emit()
