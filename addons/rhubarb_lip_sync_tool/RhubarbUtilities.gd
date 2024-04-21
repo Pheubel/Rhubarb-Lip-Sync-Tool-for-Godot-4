@@ -3,7 +3,9 @@ class_name RhubarbUtilities
 const MouthShape := preload("res://addons/rhubarb_lip_sync_tool/MouthShape.gd").MouthShape
 
 const settings_group := "Rhubarb"
-const executable_path_setting: String = "Rhubarb/executable path"
+const known_recognizers_setting: String = "Rhubarb/known_recognizers"
+const executable_path_setting: String = "Rhubarb/executable_path"
+const run_if_cached_setting: String = "Rhubarb/run_if_cached"
 
 ## Validates the current settings to ensure they are set in a valid state.
 static func validate_editor_settings() -> bool:
@@ -73,3 +75,32 @@ static func parse_from_tsv(rhubarb_file: String) -> RhubarbData:
 		result.samples.append(sample)
 	
 	return result
+
+static func get_mouth_texture(mouth_shape: MouthShape, mouth_library: MouthLibraryResource) -> Texture2D:
+	match mouth_shape:
+		MouthShape.MBP:
+			return mouth_library.mbp_shape
+		MouthShape.ETC:
+			return mouth_library.etc_shape
+		MouthShape.E:
+			return mouth_library.e_shape
+		MouthShape.AI:
+			return mouth_library.ai_shape
+		MouthShape.O:
+			return mouth_library.o_shape
+		MouthShape.U:
+			return mouth_library.u_shape
+		MouthShape.FV:
+			return mouth_library.fv_shape
+		MouthShape.L:
+			return mouth_library.l_shape
+		_:
+			return mouth_library.rest_shape
+
+## Returns the first recognizer inside of the list of known recognizers. If none were found, an empty string is returned.
+static func default_recognizer() -> String:
+	var recognizers = ProjectSettings.get_setting(RhubarbUtilities.known_recognizers_setting, ["pocketSphynx","phonetic"])
+	if recognizers.size() > 0:
+		return recognizers[0]
+	else:
+		return ""

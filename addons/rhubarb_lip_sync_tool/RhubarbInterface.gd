@@ -11,23 +11,21 @@ func _enter_tree() -> void:
 func _ready() -> void:
 	#run_rhubarb("res://what-the-hell-meme-sound-effect.ogg")
 	
-	var task := get_mouth_shape_data_async("res://what-the-hell-meme-sound-effect.ogg")
-	
-	print("started rubarb task")
-	
-	await task.task_completed
-	var data := task.get_result() as RhubarbData 
-	
-	print(data.samples)
-	
+	#var task := get_mouth_shape_data_async("res://what-the-hell-meme-sound-effect.ogg")
+	#
+	#print("started rubarb task")
+	#
+	#await task.task_completed
+	#var data := task.get_result() as RhubarbData 
+	#
+	#print(data.samples)
+	#
 	pass
 
 ## Start Rhubarb to sample the audio file. Returns the path to the output file.
 func run_rhubarb(input_file: String, dialog_file: String = "", recognizer: String = "pocketSphinx", output_format: String = "tsv") -> String:
-	print("inside a run")
-	
 	if !Engine.is_editor_hint():
-		push_warning("[Rhubarb Lip Sync Tool]: Running Rhubarb outside the editor. This can cause hanging.")
+		push_warning("[Rhubarb Lip Sync Tool]: Running Rhubarb outside the editor. This is unconventional.")
 	
 	if !RhubarbUtilities.validate_editor_settings():
 		return ""
@@ -36,7 +34,8 @@ func run_rhubarb(input_file: String, dialog_file: String = "", recognizer: Strin
 		push_error("[Rhubarb Lip Sync Tool]: File '%s' does not exist." % input_file)
 		return ""
 	
-	var output_path = output_directory_path.path_join("%s%s" % [input_file.get_file().trim_suffix(input_file.get_extension()), output_format])
+	var output_path = _file_path_as_output_path(input_file, output_directory_path, output_format)
+	DirAccess.make_dir_recursive_absolute(output_path.get_base_dir())
 	
 	var editor_settings := EditorInterface.get_editor_settings()
 	
@@ -62,8 +61,6 @@ func run_rhubarb(input_file: String, dialog_file: String = "", recognizer: Strin
 		])
 	
 	print("[Rhubarb Lip Sync Tool]: Begin analyzing on '%s' with arguments %s." % [input_file, rhubarb_arguments])
-	
-	_ensure_directories_exist()
 	
 	var result = OS.execute(
 		executable_path,
@@ -111,35 +108,175 @@ func get_mouth_shape_data_async(input_file: String, dialog_file: String = "", re
 	
 	return task
 
-## Removes all files from the output and dialog directories
-func clear_directory() -> void:
-	_ensure_directories_exist()
+## Creates a library
+func bake_animation_library(animation_arguments: Array[Dictionary], recognizer: String, animation_player: AnimationPlayer, mouth_sprite: Node, audio_stream_player: Node = null) -> AnimationLibrary:
+	var editor_settings := EditorInterface.get_editor_settings()
+	var animation_library := AnimationLibrary.new()
+	var run_if_cached := editor_settings.get_setting(RhubarbUtilities.run_if_cached_setting) as bool
+	var animation_count := animation_arguments.size()
 	
-	var output_dir := DirAccess.open(output_directory_path)
-	if output_dir:
-		output_dir.list_dir_begin()
-		
-		var next_item := output_dir.get_next()
-		while !next_item.is_empty():
-			if !output_dir.current_is_dir():
-				output_dir.remove(next_item)
-			
-			next_item = output_dir.get_next()
+	print("[Rhubarb Lip Sync Tool]: Beginning baking animation library with %d animations." % animation_count)
 	
-	var dialog_dir := DirAccess.open(dialog_directory_path)
-	if dialog_dir:
-		dialog_dir.list_dir_begin()
+	var animation_root := animation_player.get_node(animation_player.root_node)
+	var mouth_sprite_path: String
+	
+	if mouth_sprite is Sprite2D or mouth_sprite is Sprite3D:
+		mouth_sprite_path = str(animation_root.get_path_to(mouth_sprite)) + ":texture"
+	elif mouth_sprite is AnimatedSprite2D or mouth_sprite is AnimatedSprite3D:
+		assert(false, "Not supported yet")
+	else:
+		assert(false, "[Rhubarb Lip Sync Tool]: Node type for mouth sprite node is not supported.")
+	
+	var reset_animation := Animation.new()
+	
+	var reset_sprite_track_index := reset_animation.add_track(Animation.TYPE_VALUE)
+	reset_animation.value_track_set_update_mode(reset_sprite_track_index, Animation.UPDATE_DISCRETE)
+	reset_animation.track_set_path(reset_sprite_track_index, mouth_sprite_path)
+	
+	animation_library.add_animation("RESET", reset_animation)
+	
+	for index: int in animation_count:
+		var pretty_index : int = index + 1
+		var arguments := animation_arguments[index]
+		var audio_data: RhubarbData
 		
-		var next_item := dialog_dir.get_next()
-		while !next_item.is_empty():
-			if !dialog_dir.current_is_dir():
-				dialog_dir.remove(next_item)
+		var animation_name := arguments.get("animation_name", "") as String
+		animation_name = animation_name.rstrip(' ')
+		if animation_name.is_empty():
+			animation_name = "(%d)" % pretty_index
+		else:
+			animation_name = "(%d) %s" % [pretty_index, arguments.get("animation_name", "")]
+		var dialog_text := arguments.get("dialog_text", "") as String
+		var audio_stream := arguments.get("audio_stream", null) as AudioStream
+		var audio_path: String 
+		var mouth_library := arguments.get("mouth_library", null) as MouthLibraryResource
+		
+		if audio_stream:
+			audio_path = audio_stream.resource_path
+			if !FileAccess.file_exists(audio_path):
+				push_error("[Rhubarb Lip Sync Tool]: Path '%s' is not a file path. Paths to packed scenes are not supported." % audio_path)
+				continue
+		else:
+			push_error("[Rhubarb Lip Sync Tool]: No audio stream was passed to the animation arguments array at index %d." % index)
+			continue
+		
+		if! mouth_library:
+			push_error("[Rhubarb Lip Sync Tool]: No mouth library was passed to the animation arguments array at index %d." % index)
+			continue
+		
+		var out_path := _file_path_as_output_path(audio_path, output_directory_path, "tsv")
+		if !run_if_cached and FileAccess.file_exists(out_path):
+			audio_data = RhubarbUtilities.parse_from_tsv(out_path)
+		else:
+			var dialog_path := ""
+			if !dialog_text.is_empty():
+				var dialog_file = create_dialog_file(dialog_text, audio_path)
+				if dialog_file:
+					dialog_path = dialog_file.get_path_absolute()
 			
-			next_item = dialog_dir.get_next()
+			# TODO: figure out how i'm going to async everything
+			audio_data = get_mouth_shape_data(audio_path, dialog_path, recognizer)
+		
+		var animation := Animation.new()
+		
+		
+		
+		var sprite_track_index := animation.add_track(Animation.TYPE_VALUE)
+		animation.value_track_set_update_mode(sprite_track_index, Animation.UPDATE_DISCRETE)
+		animation.track_set_path(sprite_track_index, mouth_sprite_path)
+		
+		# Only add audio track if a stream player was included as an argument
+		if audio_stream_player:
+			var audio_track_index := animation.add_track(Animation.TYPE_AUDIO)
+			animation.track_set_path(audio_track_index, animation_root.get_path_to(audio_stream_player))
+			
+			animation.audio_track_insert_key(audio_track_index, 0.0, audio_stream)
+		
+		for sample in audio_data.samples:
+			animation.track_insert_key(
+				sprite_track_index,
+				sample.sample_time,
+				RhubarbUtilities.get_mouth_texture(sample.mouth_shape, mouth_library),
+				0
+			)
+		
+		animation.length = audio_data.samples[-1].sample_time
+		
+		var add_error := animation_library.add_animation(animation_name, animation)
+		
+		if !add_error:
+			print("[Rhubarb Lip Sync Tool]: Finished baking animation %d out of %d: '%s'" % [pretty_index, animation_count, animation_name])
+	
+	print("[Rhubarb Lip Sync Tool]: Finished baking animation library.")
+	
+	return animation_library
 
-func _ensure_directories_exist() -> void:
+func create_dialog_file(dialog: String, output_file_name: String) -> FileAccess:
+	var dialog_path := _file_path_as_output_path(output_file_name, output_directory_path, "txt")
+	
+	DirAccess.make_dir_recursive_absolute(dialog_path.get_base_dir())
+	
+	var dialog_file := FileAccess.open(dialog_path, FileAccess.WRITE)
+	if dialog_file:
+		dialog_file.store_string(dialog)
+	else:
+		push_error("[Rhubarb Lip Sync Tool]: Failed to write to '%s'. Error: %s" % [dialog_path, error_string(FileAccess.get_open_error())])
+	
+	return dialog_file
+
+## Removes all files from the output and dialog directories
+func remove_directories() -> void:
+	var directory_stack : Array[DirAccess] = []
+	var directories_to_remove := PackedStringArray()
+	
+	directory_stack.push_back(DirAccess.open(output_directory_path))
+	while !directory_stack.is_empty():
+		var output_dir := directory_stack.pop_back() as DirAccess
+		if !output_dir:
+			continue
+		
+		for file in output_dir.get_files():
+			output_dir.remove(file)
+		
+		for directory in output_dir.get_directories():
+			directory_stack.push_back(output_dir.open(directory))
+			directories_to_remove.append(output_dir.get_current_dir().path_join(directory))
+		
+		output_dir.list_dir_end()
+	
+	directory_stack.push_back(DirAccess.open(dialog_directory_path))
+	while !directory_stack.is_empty():
+		var dialog_dir := directory_stack.pop_back() as DirAccess
+		if !dialog_dir:
+			continue
+		
+		for file in dialog_dir.get_files():
+			dialog_dir.remove(file)
+		
+		for directory in dialog_dir.get_directories():
+			directory_stack.push_back(dialog_dir.open(directory))
+			directories_to_remove.append(dialog_dir.get_current_dir().path_join(directory))
+		
+		dialog_dir.list_dir_end()
+	
+	for index in directories_to_remove.size():
+		DirAccess.remove_absolute(directories_to_remove[-index - 1])
+
+func _file_path_as_output_path(input_path:String, output_directory: String, output_format: String) -> String:
+	return output_directory.path_join(input_path.trim_prefix("res://").trim_suffix(input_path.get_extension()) + output_format)
+
+func ensure_directories_exist() -> void:
 	if !DirAccess.dir_exists_absolute(output_directory_path):
 		DirAccess.make_dir_recursive_absolute(output_directory_path)
 	
 	if !DirAccess.dir_exists_absolute(dialog_directory_path):
 		DirAccess.make_dir_recursive_absolute(dialog_directory_path)
+	
+	#for recognizer: String in ProjectSettings.get_setting(RhubarbUtilities.known_recognizers_setting,[]):
+		#var recognizer_output_directory_path := output_directory_path.path_join(recognizer)
+		#if !DirAccess.dir_exists_absolute(recognizer_output_directory_path):
+			#DirAccess.make_dir_recursive_absolute(recognizer_output_directory_path)
+		#
+		#var recognizer_dialog_directory_path := dialog_directory_path.path_join(recognizer)
+		#if !DirAccess.dir_exists_absolute(recognizer_dialog_directory_path):
+			#DirAccess.make_dir_recursive_absolute(recognizer_dialog_directory_path)
