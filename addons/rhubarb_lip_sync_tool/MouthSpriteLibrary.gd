@@ -1,6 +1,6 @@
 ## A library of Preston Blair mouth shapes that will be used for animating the mouth.
 extends Resource
-class_name MouthLibraryResource
+class_name MouthSpriteLibrary
 
 ## Closed mouth used for a resting position.
 @export var rest_shape: Texture2D

@@ -76,7 +76,7 @@ static func parse_from_tsv(rhubarb_file: String) -> RhubarbData:
 	
 	return result
 
-static func get_mouth_texture(mouth_shape: MouthShape, mouth_library: MouthLibraryResource) -> Texture2D:
+static func get_mouth_texture(mouth_shape: MouthShape, mouth_library: MouthSpriteLibrary) -> Texture2D:
 	match mouth_shape:
 		MouthShape.MBP:
 			return mouth_library.mbp_shape

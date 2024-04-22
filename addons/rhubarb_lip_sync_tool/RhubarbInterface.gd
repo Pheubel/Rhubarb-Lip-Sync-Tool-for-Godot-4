@@ -153,6 +153,8 @@ func bake_animation_library(animation_arguments: Array[Dictionary], recognizer: 
 		var arguments := animation_arguments[index]
 		var audio_data: RhubarbData
 		
+		arguments["_argument_array_index"] = index
+		
 		var animation_name := arguments.get("animation_name", "") as String
 		animation_name = animation_name.rstrip(' ')
 		if animation_name.is_empty():
@@ -162,7 +164,6 @@ func bake_animation_library(animation_arguments: Array[Dictionary], recognizer: 
 		var dialog_text := arguments.get("dialog_text", "") as String
 		var audio_stream := arguments.get("audio_stream", null) as AudioStream
 		var audio_path: String 
-		var mouth_library := arguments.get("mouth_library", null) as MouthLibraryResource
 		
 		if audio_stream:
 			audio_path = audio_stream.resource_path
@@ -171,10 +172,6 @@ func bake_animation_library(animation_arguments: Array[Dictionary], recognizer: 
 				continue
 		else:
 			push_error("[Rhubarb Lip Sync Tool]: No audio stream was passed to the animation arguments array at index %d." % index)
-			continue
-		
-		if! mouth_library:
-			push_error("[Rhubarb Lip Sync Tool]: No mouth library was passed to the animation arguments array at index %d." % index)
 			continue
 		
 		var out_path := _file_path_as_output_path(audio_path, output_directory_path, "tsv")
@@ -192,7 +189,7 @@ func bake_animation_library(animation_arguments: Array[Dictionary], recognizer: 
 		
 		var animation := Animation.new()
 		
-		mouth_handler.call(animation, audio_data, mouth_library)
+		mouth_handler.call(animation, arguments, audio_data)
 		
 		# Only add audio track if a stream player was included as an argument
 		if !audio_stream_player_path.is_empty():
@@ -219,9 +216,15 @@ func reset_sprite_handler(reset_animation: Animation, mouth_path: NodePath) -> v
 	reset_animation.value_track_set_update_mode(reset_sprite_track_index, Animation.UPDATE_DISCRETE)
 	reset_animation.track_set_path(reset_sprite_track_index, mouth_texture_path)
 
-func mouth_sprite_handler(animation: Animation, audio_data: RhubarbData, mouth_library: MouthLibraryResource, mouth_path: NodePath) -> void:
+func mouth_sprite_handler(animation: Animation, animation_arguments: Dictionary, audio_data: RhubarbData, mouth_path: NodePath) -> void:
 	var mouth_texture_path = str(mouth_path) + ":texture"
 	var sprite_track_index := animation.add_track(Animation.TYPE_VALUE)
+	var mouth_library := animation_arguments.get("mouth_library", null) as MouthSpriteLibrary
+	
+	if! mouth_library:
+		push_error("[Rhubarb Lip Sync Tool]: No mouth library was passed to the animation arguments array at index %d." % animation_arguments["_argument_array_index"])
+		return
+	
 	animation.value_track_set_update_mode(sprite_track_index, Animation.UPDATE_DISCRETE)
 	animation.track_set_path(sprite_track_index, mouth_texture_path)
 	
@@ -236,8 +239,8 @@ func mouth_sprite_handler(animation: Animation, audio_data: RhubarbData, mouth_l
 func reset_property_handler(reset_animation: Animation, mouth_property: Dictionary) -> void:
 	reset_properties_handler(reset_animation, [mouth_property])
 
-func mouth_property_handler(animation: Animation, audio_data: RhubarbData, mouth_library: MouthLibraryResource, mouth_property: Dictionary) -> void:
-	mouth_properties_handler(animation, audio_data, mouth_library, [mouth_property])
+func mouth_property_handler(animation: Animation, audio_data: RhubarbData,animation_arguments : Dictionary, mouth_property: Dictionary) -> void:
+	mouth_properties_handler(animation, animation_arguments, audio_data, [mouth_property])
 
 func reset_properties_handler(reset_animation: Animation, mouth_properties: Array[Dictionary]) -> void:
 	for mouth_property in mouth_properties:
@@ -245,7 +248,13 @@ func reset_properties_handler(reset_animation: Animation, mouth_properties: Arra
 		reset_animation.value_track_set_update_mode(reset_sprite_track_index, mouth_property.get("update_mode", Animation.UPDATE_DISCRETE))
 		reset_animation.track_set_path(reset_sprite_track_index, mouth_property["property_path"])
 
-func mouth_properties_handler(animation: Animation, audio_data: RhubarbData, mouth_library: MouthLibraryResource, mouth_properties: Array[Dictionary]) -> void:
+func mouth_properties_handler(animation: Animation, animation_arguments: Dictionary, audio_data: RhubarbData, mouth_properties: Array[Dictionary]) -> void:
+	var mouth_library := animation_arguments.get("mouth_library", null) as MouthSpriteLibrary
+	
+	if! mouth_library:
+		push_error("[Rhubarb Lip Sync Tool]: No mouth library was passed to the animation arguments array at index %d." % animation_arguments["_argument_array_index"])
+		return
+	
 	for mouth_property in mouth_properties:
 		var sprite_track_index := animation.add_track(mouth_property.get("animation_type", Animation.TYPE_VALUE))
 		animation.value_track_set_update_mode(sprite_track_index, mouth_property.get("update_mode", Animation.UPDATE_DISCRETE))

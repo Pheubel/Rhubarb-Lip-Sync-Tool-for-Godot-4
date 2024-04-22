@@ -1,6 +1,6 @@
 @tool
-extends Node
-class_name RhubarbMouthComposer2D
+extends RhubarbMouthComposer
+class_name RhubarbMouthSpriteComposer
 
 const library_name_prefix := "RLS"
 
@@ -17,11 +17,7 @@ const library_name_prefix := "RLS"
 		update_configuration_warnings()
 
 ## The sprite that will be animated to the fitting mouth shapes.
-@export var mouth_sprite: Sprite2D:
-	set(value):
-		if mouth_sprite != value:
-			mouth_sprite = value
-			update_configuration_warnings()
+var mouth_sprite_path: NodePath
 
 ## The animation player that will have the lip animations baked to.
 @export var animation_player: AnimationPlayer:
@@ -65,11 +61,7 @@ func bake_animation_library() -> void:
 			update_configuration_warnings()
 		return
 	
-	#var stream_player: Node = null
-	#if !audio_stream_player_path.is_empty():
-		#stream_player = get_node(audio_stream_player_path)
-	
-	animation_library = RhubarbInterface.bake_animation_library_from_nodes(rhubarb_input, recognizer, animation_player, mouth_sprite, get_audio_player_node())
+	animation_library = RhubarbInterface.bake_animation_library_from_nodes(rhubarb_input, recognizer, animation_player, get_mouth_sprite_node(), get_audio_player_node())
 	_bake_hash = current_hash
 	
 	animation_player.add_animation_library(get_full_library_name(), animation_library)
@@ -78,7 +70,6 @@ func bake_animation_library() -> void:
 	
 	notify_property_list_changed()
 	update_configuration_warnings()
-	pass
 
 func clear_animation_library() -> void:
 	_bake_hash = 0
@@ -106,6 +97,12 @@ func get_animation_library() -> AnimationLibrary:
 	else:
 		return null
 
+func get_mouth_sprite_node() -> Node:
+	if mouth_sprite_path.is_empty():
+		return null
+	
+	return get_node(mouth_sprite_path)
+
 func get_audio_player_node() -> Node:
 	if audio_stream_player_path.is_empty():
 		return null
@@ -116,6 +113,14 @@ func get_audio_player_node() -> Node:
 
 func _get_property_list() -> Array[Dictionary]:
 	var properties : Array[Dictionary] = []
+	properties.append({
+		"name": "mouth_sprite",
+		"type": TYPE_NODE_PATH,
+		"usage": PROPERTY_USAGE_DEFAULT,
+		"hint": PROPERTY_HINT_NODE_PATH_VALID_TYPES,
+		"hint_string": "Sprite2D,Sprite3D"
+	})
+	
 	properties.append({
 		"name": "audio_stream_player",
 		"type": TYPE_NODE_PATH,
@@ -176,8 +181,8 @@ func _get_property_list() -> Array[Dictionary]:
 		properties.append({
 			"name": "rhubarb_input_%d/mouth_library" % i,
 			"type": TYPE_OBJECT,
-			"hint_string": "MouthLibraryResource",
-			"class_name": &"MouthLibraryResource",
+			"hint_string": "MouthSpriteLibrary",
+			"class_name": &"MouthSpriteLibrary",
 			"hint": PROPERTY_HINT_RESOURCE_TYPE
 		})
 	
@@ -196,19 +201,27 @@ func _get(property):
 	if property == "_bake_hash":
 		return _bake_hash
 	
+	if property == "mouth_sprite":
+		return mouth_sprite_path
+	
 	if property.begins_with("rhubarb_input_"):
 		var parts = property.trim_prefix("rhubarb_input_").split("/")
 		var i = parts[0].to_int()
 		return rhubarb_input[i].get(parts[1])
 
 func _set(property, value):
-	print("set ", property, " ", value)
-	
 	if property == "audio_stream_player":
 		if value is NodePath and !value.is_empty():
 			audio_stream_player_path = value
 		else:
 			audio_stream_player_path = NodePath()
+		update_configuration_warnings()
+	
+	if property == "mouth_sprite":
+		if value is NodePath and !value.is_empty():
+			mouth_sprite_path = value
+		else:
+			mouth_sprite_path = NodePath()
 		update_configuration_warnings()
 	
 	if property == "recognizer":
@@ -254,7 +267,7 @@ func _set(property, value):
 				rhubarb_input[i]["dialog_text"] = value
 		
 		elif parts[1] == "mouth_library":
-			if value is MouthLibraryResource:
+			if value is MouthSpriteLibrary:
 				rhubarb_input[i]["mouth_library"] = value
 			else:
 				rhubarb_input[i]["mouth_library"] = null
@@ -262,6 +275,9 @@ func _set(property, value):
 
 func _property_can_revert(property: StringName):
 	if property == "audio_stream_player":
+		return true
+	
+	if property == "mouth_sprite":
 		return true
 	
 	if property == "recognizer":
@@ -285,6 +301,9 @@ func _property_get_revert(property: StringName):
 		return ""
 	
 	if property == "audio_stream_player":
+		return NodePath()
+	
+	if property == "mouth_sprite":
 		return NodePath()
 	
 	if property == "recognizer":
@@ -323,19 +342,37 @@ func _validate_hash(hash: int) -> bool:
 func _calculate_hash() -> int:
 	var result: int = 0
 	
-	result += hash(get_path_to(mouth_sprite))
+	result += hash(mouth_sprite_path)
 	result += hash(audio_stream_player_path)
 	result += hash(recognizer)
-	result += hash(rhubarb_input)
+	
+	for input in rhubarb_input:
+		result += hash(input.get("animation_name", ""))
+		
+		var audio_stream := input.get("audio_stream") as AudioStream
+		if audio_stream:
+			result += hash(audio_stream.get_rid())
+		
+		result += hash(input.get("dialog_text", ""))
+		
+		var mouth_library := input.get("mouth_library") as MouthSpriteLibrary
+		if mouth_library:
+			result += hash(mouth_library.get_rid())
 	
 	return result
 
 func _validate_inputs(output_messages: PackedStringArray) -> bool:
 	var is_valid : bool = true
 	
-	if mouth_sprite == null:
+	var mouth_sprite := get_mouth_sprite_node()
+	if !mouth_sprite:
 		is_valid = false
 		output_messages.append("Mouth Sprite has not been set.")
+	else:
+		var is_sprite_node := mouth_sprite is Sprite2D or mouth_sprite is Sprite3D
+		if !is_sprite_node:
+			is_valid = false
+			output_messages.append("Node path '%s' does not actually go to a sprite node." % mouth_sprite_path)
 	
 	if animation_player == null:
 		is_valid = false

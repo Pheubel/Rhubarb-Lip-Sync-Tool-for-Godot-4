@@ -3,10 +3,10 @@ extends EditorInspectorPlugin
 
 
 func _can_handle(object: Object) -> bool:
-	return object is RhubarbMouthComposer2D
+	return object is RhubarbMouthComposer
 
 func _parse_begin(object: Object) -> void:
-	var mouth_composer := object as RhubarbMouthComposer2D
+	var mouth_composer := object as RhubarbMouthComposer
 	
 	var h_box := HBoxContainer.new()
 	h_box.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
@@ -27,8 +27,8 @@ func _parse_begin(object: Object) -> void:
 	
 	add_custom_control(h_box)
 
-func _on_bake_pressed(mouth_composer: RhubarbMouthComposer2D) -> void:
+func _on_bake_pressed(mouth_composer: RhubarbMouthComposer) -> void:
 	mouth_composer.bake_animation_library()
 
-func _on_clear_pressed(mouth_composer: RhubarbMouthComposer2D) -> void:
+func _on_clear_pressed(mouth_composer: RhubarbMouthComposer) -> void:
 	mouth_composer.clear_animation_library()
