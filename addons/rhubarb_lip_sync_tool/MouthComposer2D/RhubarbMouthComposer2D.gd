@@ -35,10 +35,8 @@ const library_name_prefix := "RLS"
 ## The animation library containing the lip sync animations.
 var animation_library: AnimationLibrary
 
-var audio_stream_player_node: Node
-
 ### The audio stream player that will play the audio stream. If left empty, it will to be included in the animation.
-#var audio_stream_player_path: NodePath
+var audio_stream_player_path: NodePath
 
 ## A dictionary of input for creating an animation library with Rhubarb.[br]
 ## The keys are [b]animation_name[/b], [b]audio_stream[/b], [b]dialog_text[/b] and [b]mouth_library[/b].
@@ -71,7 +69,7 @@ func bake_animation_library() -> void:
 	#if !audio_stream_player_path.is_empty():
 		#stream_player = get_node(audio_stream_player_path)
 	
-	animation_library = RhubarbInterface.bake_animation_library_from_nodes(rhubarb_input, recognizer, animation_player, mouth_sprite, audio_stream_player_node)
+	animation_library = RhubarbInterface.bake_animation_library_from_nodes(rhubarb_input, recognizer, animation_player, mouth_sprite, get_audio_player_node())
 	_bake_hash = current_hash
 	
 	animation_player.add_animation_library(get_full_library_name(), animation_library)
@@ -107,6 +105,12 @@ func get_animation_library() -> AnimationLibrary:
 		return animation_library
 	else:
 		return null
+
+func get_audio_player_node() -> Node:
+	if audio_stream_player_path.is_empty():
+		return null
+	
+	return get_node(audio_stream_player_path)
 
 #region Inspector Properties
 
@@ -184,10 +188,7 @@ func _get(property):
 		return rhubarb_input.size()
 	
 	if property == "audio_stream_player":
-		if audio_stream_player_node:
-			return get_path_to(audio_stream_player_node)
-		else:
-			return NodePath()
+		return audio_stream_player_path
 	
 	if property == "recognizer":
 		return recognizer
@@ -201,15 +202,13 @@ func _get(property):
 		return rhubarb_input[i].get(parts[1])
 
 func _set(property, value):
-	#print("set ", property, " ", value)
+	print("set ", property, " ", value)
 	
 	if property == "audio_stream_player":
 		if value is NodePath and !value.is_empty():
-			var value_node := get_node(value)
-			if value_node is AudioStreamPlayer or value_node is AudioStreamPlayer2D or value_node is AudioStreamPlayer3D:
-				audio_stream_player_node = value_node
+			audio_stream_player_path = value
 		else:
-			audio_stream_player_node = null
+			audio_stream_player_path = NodePath()
 		update_configuration_warnings()
 	
 	if property == "recognizer":
@@ -325,8 +324,7 @@ func _calculate_hash() -> int:
 	var result: int = 0
 	
 	result += hash(get_path_to(mouth_sprite))
-	if audio_stream_player_node:
-		result += hash(get_path_to(audio_stream_player_node))
+	result += hash(audio_stream_player_path)
 	result += hash(recognizer)
 	result += hash(rhubarb_input)
 	
@@ -346,6 +344,13 @@ func _validate_inputs(output_messages: PackedStringArray) -> bool:
 	if recognizer.is_empty():
 		is_valid = false
 		output_messages.append("No recognizer has been set.")
+	
+	var audio_player_node := get_audio_player_node()
+	if audio_player_node:
+		var is_audio_player_node = audio_player_node is AudioStreamPlayer or audio_player_node is AudioStreamPlayer2D or audio_player_node is AudioStreamPlayer3D
+		if !is_audio_player_node:
+			is_valid = false
+			output_messages.append("Node path '%s' does not actually go to an audio stream player node." % audio_stream_player_path)
 	
 	elif !ProjectSettings.get_setting(RhubarbUtilities.known_recognizers_setting,[]).has(recognizer):
 		is_valid = false
