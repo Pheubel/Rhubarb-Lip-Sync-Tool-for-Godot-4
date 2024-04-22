@@ -108,8 +108,33 @@ func get_mouth_shape_data_async(input_file: String, dialog_file: String = "", re
 	
 	return task
 
+func bake_animation_library_from_nodes(animation_arguments: Array[Dictionary], recognizer: String, animation_player: AnimationPlayer, mouth_sprite: Node, audio_stream_player: Node = null) -> AnimationLibrary:
+	var animation_root := animation_player.get_node(animation_player.root_node)
+	var mouth_sprite_path: String
+	var mouth_handler: Callable
+	var reset_handler: Callable
+	
+	if mouth_sprite is Sprite2D or mouth_sprite is Sprite3D:
+		mouth_sprite_path = animation_root.get_path_to(mouth_sprite)
+		mouth_handler = mouth_sprite_handler.bind(mouth_sprite_path)
+		reset_handler = reset_sprite_handler.bind(mouth_sprite_path)
+	else:
+		assert(false, "[Rhubarb Lip Sync Tool]: Node type for mouth sprite node is not supported.")
+	
+	var audio_stream_player_path := NodePath()
+	if audio_stream_player:
+		audio_stream_player_path = animation_root.get_path_to(audio_stream_player)
+	
+	return bake_animation_library(
+		animation_arguments, 
+		recognizer, 
+		mouth_handler, 
+		reset_handler,
+		audio_stream_player_path
+	)
+
 ## Creates a library
-func bake_animation_library(animation_arguments: Array[Dictionary], recognizer: String, animation_player: AnimationPlayer, mouth_sprite: Node, audio_stream_player: Node = null) -> AnimationLibrary:
+func bake_animation_library(animation_arguments: Array[Dictionary], recognizer: String, mouth_handler: Callable, reset_handler: Callable, audio_stream_player_path := NodePath()) -> AnimationLibrary:
 	var editor_settings := EditorInterface.get_editor_settings()
 	var animation_library := AnimationLibrary.new()
 	var run_if_cached := editor_settings.get_setting(RhubarbUtilities.run_if_cached_setting) as bool
@@ -117,21 +142,9 @@ func bake_animation_library(animation_arguments: Array[Dictionary], recognizer: 
 	
 	print("[Rhubarb Lip Sync Tool]: Beginning baking animation library with %d animations." % animation_count)
 	
-	var animation_root := animation_player.get_node(animation_player.root_node)
-	var mouth_sprite_path: String
-	
-	if mouth_sprite is Sprite2D or mouth_sprite is Sprite3D:
-		mouth_sprite_path = str(animation_root.get_path_to(mouth_sprite)) + ":texture"
-	elif mouth_sprite is AnimatedSprite2D or mouth_sprite is AnimatedSprite3D:
-		assert(false, "Not supported yet")
-	else:
-		assert(false, "[Rhubarb Lip Sync Tool]: Node type for mouth sprite node is not supported.")
-	
 	var reset_animation := Animation.new()
 	
-	var reset_sprite_track_index := reset_animation.add_track(Animation.TYPE_VALUE)
-	reset_animation.value_track_set_update_mode(reset_sprite_track_index, Animation.UPDATE_DISCRETE)
-	reset_animation.track_set_path(reset_sprite_track_index, mouth_sprite_path)
+	reset_handler.call(reset_animation)
 	
 	animation_library.add_animation("RESET", reset_animation)
 	
@@ -179,26 +192,14 @@ func bake_animation_library(animation_arguments: Array[Dictionary], recognizer: 
 		
 		var animation := Animation.new()
 		
-		
-		
-		var sprite_track_index := animation.add_track(Animation.TYPE_VALUE)
-		animation.value_track_set_update_mode(sprite_track_index, Animation.UPDATE_DISCRETE)
-		animation.track_set_path(sprite_track_index, mouth_sprite_path)
+		mouth_handler.call(animation, audio_data, mouth_library)
 		
 		# Only add audio track if a stream player was included as an argument
-		if audio_stream_player:
+		if !audio_stream_player_path.is_empty():
 			var audio_track_index := animation.add_track(Animation.TYPE_AUDIO)
-			animation.track_set_path(audio_track_index, animation_root.get_path_to(audio_stream_player))
+			animation.track_set_path(audio_track_index, audio_stream_player_path)
 			
 			animation.audio_track_insert_key(audio_track_index, 0.0, audio_stream)
-		
-		for sample in audio_data.samples:
-			animation.track_insert_key(
-				sprite_track_index,
-				sample.sample_time,
-				RhubarbUtilities.get_mouth_texture(sample.mouth_shape, mouth_library),
-				0
-			)
 		
 		animation.length = audio_data.samples[-1].sample_time
 		
@@ -210,6 +211,62 @@ func bake_animation_library(animation_arguments: Array[Dictionary], recognizer: 
 	print("[Rhubarb Lip Sync Tool]: Finished baking animation library.")
 	
 	return animation_library
+
+#region Built in handlers
+func reset_sprite_handler(reset_animation: Animation, mouth_path: NodePath) -> void:
+	var mouth_texture_path = str(mouth_path) + ":texture"
+	var reset_sprite_track_index := reset_animation.add_track(Animation.TYPE_VALUE)
+	reset_animation.value_track_set_update_mode(reset_sprite_track_index, Animation.UPDATE_DISCRETE)
+	reset_animation.track_set_path(reset_sprite_track_index, mouth_texture_path)
+
+func mouth_sprite_handler(animation: Animation, audio_data: RhubarbData, mouth_library: MouthLibraryResource, mouth_path: NodePath) -> void:
+	var mouth_texture_path = str(mouth_path) + ":texture"
+	var sprite_track_index := animation.add_track(Animation.TYPE_VALUE)
+	animation.value_track_set_update_mode(sprite_track_index, Animation.UPDATE_DISCRETE)
+	animation.track_set_path(sprite_track_index, mouth_texture_path)
+	
+	for sample in audio_data.samples:
+		animation.track_insert_key(
+			sprite_track_index,
+			sample.sample_time,
+			RhubarbUtilities.get_mouth_texture(sample.mouth_shape, mouth_library),
+			0
+		)
+
+func reset_property_handler(reset_animation: Animation, mouth_property: Dictionary) -> void:
+	reset_properties_handler(reset_animation, [mouth_property])
+
+func mouth_property_handler(animation: Animation, audio_data: RhubarbData, mouth_library: MouthLibraryResource, mouth_property: Dictionary) -> void:
+	mouth_properties_handler(animation, audio_data, mouth_library, [mouth_property])
+
+func reset_properties_handler(reset_animation: Animation, mouth_properties: Array[Dictionary]) -> void:
+	for mouth_property in mouth_properties:
+		var reset_sprite_track_index := reset_animation.add_track(mouth_property.get("animation_type", Animation.TYPE_VALUE))
+		reset_animation.value_track_set_update_mode(reset_sprite_track_index, mouth_property.get("update_mode", Animation.UPDATE_DISCRETE))
+		reset_animation.track_set_path(reset_sprite_track_index, mouth_property["property_path"])
+
+func mouth_properties_handler(animation: Animation, audio_data: RhubarbData, mouth_library: MouthLibraryResource, mouth_properties: Array[Dictionary]) -> void:
+	for mouth_property in mouth_properties:
+		var sprite_track_index := animation.add_track(mouth_property.get("animation_type", Animation.TYPE_VALUE))
+		animation.value_track_set_update_mode(sprite_track_index, mouth_property.get("update_mode", Animation.UPDATE_DISCRETE))
+		animation.track_set_path(sprite_track_index, mouth_property["property_path"])
+		var use_texture_mode := mouth_property.get("use_textures", true) as bool
+				
+		for sample in audio_data.samples:
+			var key_value: Variant
+			
+			if use_texture_mode:
+				key_value = RhubarbUtilities.get_mouth_texture(sample.mouth_shape, mouth_library)
+			else:
+				key_value = sample.mouth_shape
+			
+			animation.track_insert_key(
+				sprite_track_index,
+				sample.sample_time,
+				key_value,
+				0
+			)
+#endregion
 
 func create_dialog_file(dialog: String, output_file_name: String) -> FileAccess:
 	var dialog_path := _file_path_as_output_path(output_file_name, output_directory_path, "txt")

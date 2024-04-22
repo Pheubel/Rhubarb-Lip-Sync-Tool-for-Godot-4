@@ -71,7 +71,7 @@ func bake_animation_library() -> void:
 	#if !audio_stream_player_path.is_empty():
 		#stream_player = get_node(audio_stream_player_path)
 	
-	animation_library = RhubarbInterface.bake_animation_library(rhubarb_input, recognizer, animation_player, mouth_sprite, audio_stream_player_node)
+	animation_library = RhubarbInterface.bake_animation_library_from_nodes(rhubarb_input, recognizer, animation_player, mouth_sprite, audio_stream_player_node)
 	_bake_hash = current_hash
 	
 	animation_player.add_animation_library(get_full_library_name(), animation_library)
