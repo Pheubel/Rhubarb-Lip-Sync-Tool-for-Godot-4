@@ -2,7 +2,7 @@
 extends EditorPlugin
 
 const RhubarbExport := preload("res://addons/rhubarb_lip_sync_tool/RhubarbExport.gd")
-const RhubarbMouthComposerInspector := preload("res://addons/rhubarb_lip_sync_tool/MouthComposer2D/RhubarbMouthComposerInspector.gd")
+const RhubarbMouthComposerInspector := preload("res://addons/rhubarb_lip_sync_tool/MouthComposer/RhubarbMouthComposerInspector.gd")
 
 var export_plugin: EditorExportPlugin
 var composer_inspector_plugin: EditorInspectorPlugin
