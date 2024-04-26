@@ -49,17 +49,17 @@ func get_audio_player_node() -> Node:
 	return get_node(audio_stream_player)
 
 func bake_animation_library() -> void:
-	assert(false, "Cannot call this function on base class instances")
+	assert(false, "Cannot call 'bake_animation_library()' on base class instances")
 
 func clear_animation_library() -> void:
-	assert(false, "Cannot call this function on base class instances")
+	assert(false, "Cannot call 'clear_animation_library()' on base class instances")
 
 func has_baked_library() -> bool:
-	assert(false, "Cannot call this function on base class instances")
+	assert(false, "Cannot call 'has_baked_library()' on base class instances")
 	return false
 
 func get_animation_library() -> Resource:
-	assert(false, "Cannot call this function on base class instances")
+	assert(false, "Cannot call 'get_animation_library()' on base class instances")
 	return null
 
 func get_full_library_name() -> String:
