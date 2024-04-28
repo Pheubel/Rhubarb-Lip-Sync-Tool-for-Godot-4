@@ -59,7 +59,8 @@ func _enter_tree() -> void:
 	
 	add_autoload_singleton("RhubarbInterface", "res://addons/rhubarb_lip_sync_tool/RhubarbInterface.gd")
 	
-	RhubarbInterface.ensure_directories_exist()
+	var rin:RhubarbInterfaceNode = RhubarbInterfaceNode.new()
+	rin.ensure_directories_exist()
 
 func _exit_tree() -> void:
 	remove_inspector_plugin(composer_inspector_plugin)
